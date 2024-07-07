@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Time Visualization</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        #time-line {
+            position: relative;
+            width: 90%;
+            height: 50px;
+            border: 1px solid #000;
+        }
+        .hour-marker {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 1px;
+            background: #000;
+        }
+        #current-time-marker {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: red;
+        }
+        .hour-label {
+            position: absolute;
+            top: 60px;
+            transform: translateX(-50%);
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div id="time-line"></div>
+    <script>
+        function initializeTimeLine() {
+            const timeLine = document.getElementById('time-line');
+            const hoursInDay = 24;
+            const timeLineWidth = timeLine.clientWidth;
+
+            // Create hour markers and labels
+            for (let i = 0; i < hoursInDay; i++) {
+                const hourMarker = document.createElement('div');
+                hourMarker.className = 'hour-marker';
+                hourMarker.style.left = `${(i / hoursInDay) * 100}%`;
+                timeLine.appendChild(hourMarker);
+
+                const hourLabel = document.createElement('div');
+                hourLabel.className = 'hour-label';
+                hourLabel.style.left = `${(i / hoursInDay) * 100}%`;
+                hourLabel.textContent = `${i}:00`;
+                timeLine.appendChild(hourLabel);
+            }
+
+            // Create the current time marker
+            const currentTimeMarker = document.createElement('div');
+            currentTimeMarker.id = 'current-time-marker';
+            timeLine.appendChild(currentTimeMarker);
+
+            // Update the current time marker position
+            function updateCurrentTimeMarker() {
+                const now = new Date();
+                const hours = now.getHours();
+                const minutes = now.getMinutes();
+                const seconds = now.getSeconds();
+                const totalMinutes = hours * 60 + minutes + seconds / 60;
+                const percentageOfDay = totalMinutes / (24 * 60);
+                currentTimeMarker.style.left = `${percentageOfDay * 100}%`;
+            }
+
+            setInterval(updateCurrentTimeMarker, 1000);
+            updateCurrentTimeMarker();
+        }
+
+        document.addEventListener('DOMContentLoaded', initializeTimeLine);
+    </script>
+</body>
+</html>
