@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Time Visualization</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        #info {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 12px;
+            opacity: 0.5;
+        }
+        #time-line-container {
+            position: relative;
+            width: 90%;
+            height: 120px;
+        }
+        #time-line {
+            position: relative;
+            width: 100%;
+            height: 50px;
+            border: 1px solid #000;
+            z-index: 1;
+        }
+        .hour-marker {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 1px;
+            background: #000;
+        }
+        #current-time-marker {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: red;
+        }
+        .hour-label {
+            position: absolute;
+            top: 60px;
+            transform: translateX(-50%);
+            font-size: 12px;
+        }
+        .day-night-background {
+            position: absolute;
+            top: 0;
+            height: 50px;
+            z-index: 0;
+        }
+        #day-background {
+            background-color: #FFD700;
+        }
+        #morning-civil-twilight-background,
+        #evening-civil-twilight-background {
+            background-color: #87CEEB;
+        }
+        #morning-night-background,
+        #evening-night-background {
+            background-color: #001f3f;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <div id="location"></div>
+        <div id="sun-times"></div>
+        <div id="twilight-times"></div>
+    </div>
+    <div id="time-line-container">
+        <div id="morning-night-background" class="day-night-background"></div>
+        <div id="morning-civil-twilight-background" class="day-night-background"></div>
+        <div id="day-background" class="day-night-background"></div>
+        <div id="evening-civil-twilight-background" class="day-night-background"></div>
+        <div id="evening-night-background" class="day-night-background"></div>
+        <div id="time-line"></div>
+    </div>
+    <script>
+        async function fetchLocation() {
+            const response = await fetch('https://ipapi.co/json/');
+            return response.json();
+        }
+
+        async function fetchSunTimes(lat, lon) {
+            const response = await fetch(`https://api.sunrise-sunset.org/json?lat=${lat}&lng=${lon}&formatted=0`);
+            return response.json();
+        }
+
+        function convertUTCToLocal(utcTime) {
+            return new Date(utcTime);
+        }
+
+        function formatTime(date) {
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+
+        function initializeTimeLine(times) {
+            const timeLine = document.getElementById('time-line');
+            const dayBackground = document.getElementById('day-background');
+            const morningCivilTwilightBackground = document.getElementById('morning-civil-twilight-background');
+            const eveningCivilTwilightBackground = document.getElementById('evening-civil-twilight-background');
+            const morningNightBackground = document.getElementById('morning-night-background');
+            const eveningNightBackground = document.getElementById('evening-night-background');
+            const hoursInDay = 24;
+            const totalMinutesInDay = 1440;
+
+            const {
+                sunrise, sunset, civil_twilight_begin, civil_twilight_end
+            } = times;
+
+            const morningNightEnd = convertUTCToLocal(civil_twilight_begin);
+            const morningCivilTwilightBegin = convertUTCToLocal(civil_twilight_begin);
+            const sunriseLocal = convertUTCToLocal(sunrise);
+            const sunsetLocal = convertUTCToLocal(sunset);
+            const eveningCivilTwilightEnd = convertUTCToLocal(civil_twilight_end);
+            const eveningNightStart = convertUTCToLocal(civil_twilight_end);
+
+            // Calculate total minutes from midnight
+            const morningNightEndMinutes = morningNightEnd.getHours() * 60 + morningNightEnd.getMinutes();
+            const morningCivilTwilightBeginMinutes = morningCivilTwilightBegin.getHours() * 60 + morningCivilTwilightBegin.getMinutes();
+            const sunriseMinutes = sunriseLocal.getHours() * 60 + sunriseLocal.getMinutes();
+            const sunsetMinutes = sunsetLocal.getHours() * 60 + sunsetLocal.getMinutes();
+            const eveningCivilTwilightEndMinutes = eveningCivilTwilightEnd.getHours() * 60 + eveningCivilTwilightEnd.getMinutes();
+            const eveningNightStartMinutes = eveningNightStart.getHours() * 60 + eveningNightStart.getMinutes();
+
+            // Calculate percentage of the day
+            const morningNightEndPercent = (morningNightEndMinutes / totalMinutesInDay) * 100;
+            const civilTwilightBeginPercent = (morningCivilTwilightBeginMinutes / totalMinutesInDay) * 100;
+            const sunrisePercent = (sunriseMinutes / totalMinutesInDay) * 100;
+            const sunsetPercent = (sunsetMinutes / totalMinutesInDay) * 100;
+            const civilTwilightEndPercent = (eveningCivilTwilightEndMinutes / totalMinutesInDay) * 100;
+            const eveningNightStartPercent = (eveningNightStartMinutes / totalMinutesInDay) * 100;
+
+            // Set background positions and widths
+            morningNightBackground.style.left = '0';
+            morningNightBackground.style.width = `${morningNightEndPercent}%`;
+
+            morningCivilTwilightBackground.style.left = `${morningNightEndPercent}%`;
+            morningCivilTwilightBackground.style.width = `${sunrisePercent - morningNightEndPercent}%`;
+
+            dayBackground.style.left = `${sunrisePercent}%`;
+            dayBackground.style.width = `${sunsetPercent - sunrisePercent}%`;
+
+            eveningCivilTwilightBackground.style.left = `${sunsetPercent}%`;
+            eveningCivilTwilightBackground.style.width = `${civilTwilightEndPercent - sunsetPercent}%`;
+
+            eveningNightBackground.style.left = `${civilTwilightEndPercent}%`;
+            eveningNightBackground.style.width = `${100 - civilTwilightEndPercent}%`;
+
+            // Display debug information
+            document.getElementById('twilight-times').innerHTML = `
+                <div>Morning Deep Night Ends: ${formatTime(morningNightEnd)}</div>
+                <div>Morning Civil Twilight: ${formatTime(morningCivilTwilightBegin)} - ${formatTime(sunriseLocal)}</div>
+                <div>Day: ${formatTime(sunriseLocal)} - ${formatTime(sunsetLocal)}</div>
+                <div>Evening Civil Twilight: ${formatTime(sunsetLocal)} - ${formatTime(eveningCivilTwilightEnd)}</div>
+                <div>Evening Deep Night Starts: ${formatTime(eveningNightStart)}</div>
+            `;
+
+            // Create hour markers and labels
+            for (let i = 0; i < hoursInDay; i++) {
+                const hourMarker = document.createElement('div');
+                hourMarker.className = 'hour-marker';
+                hourMarker.style.left = `${(i / hoursInDay) * 100}%`;
+                timeLine.appendChild(hourMarker);
+
+                const hourLabel = document.createElement('div');
+                hourLabel.className = 'hour-label';
+                hourLabel.style.left = `${(i / hoursInDay) * 100}%`;
+                hourLabel.textContent = `${i}:00`;
+                timeLine.appendChild(hourLabel);
+            }
+
+            // Create the current time marker
+            const currentTimeMarker = document.createElement('div');
+            currentTimeMarker.id = 'current-time-marker';
+            timeLine.appendChild(currentTimeMarker);
+
+            // Update the current time marker position
+            function updateCurrentTimeMarker() {
+                const now = new Date();
+                const hours = now.getHours();
+                const minutes = now.getMinutes();
+                const seconds = now.getSeconds();
+                const totalMinutes = hours * 60 + minutes + seconds / 60;
+                const percentageOfDay = totalMinutes / totalMinutesInDay;
+                currentTimeMarker.style.left = `${percentageOfDay * 100}%`;
+            }
+
+            setInterval(updateCurrentTimeMarker, 1000);
+            updateCurrentTimeMarker();
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            const location = await fetchLocation();
+            const { city, region, country, latitude, longitude } = location;
+            const sunTimes = await fetchSunTimes(latitude, longitude);
+            const times = sunTimes.results;
+
+            const sunriseDate = convertUTCToLocal(times.sunrise);
+            const sunsetDate = convertUTCToLocal(times.sunset);
+            const sunriseLocal = formatTime(sunriseDate);
+            const sunsetLocal = formatTime(sunsetDate);
+
+            document.getElementById('location').textContent = `Location: ${city}, ${region}, ${country}`;
+            document.getElementById('sun-times').textContent = `Sunrise: ${sunriseLocal}, Sunset: ${sunsetLocal}`;
+
+            initializeTimeLine(times);
+        });
+    </script>
+</body>
+</html>
