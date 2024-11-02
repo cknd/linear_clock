@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <!-- Head Section -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>linear clock</title>
+    <title>Linear Clock</title>
     <style>
         /* CSS Styles */
         body {
@@ -118,6 +119,7 @@
         }
 
         @media (max-width: 900px) {
+            /* Responsive Styles */
             #time-line-container {
                 width: 200px;
                 height: 1000px;
@@ -161,6 +163,7 @@
     </style>
 </head>
 <body>
+    <!-- Body Content -->
     <div id="controls">
         <div class="input-group">
             <label for="location-input">Location:</label>
@@ -173,12 +176,14 @@
         <button id="update-button">Update</button>
     </div>
     <div id="info">
+        <div id="error-message" style="color: red;"></div>
         <div id="location"></div>
         <div id="timezone"></div>
         <div id="current-location-time"></div>
         <div id="sun-times"></div>
     </div>
     <div id="time-line-container">
+        <!-- Background Segments -->
         <div id="morning-night-background" class="day-night-background"></div>
         <div id="morning-civil-twilight-background" class="day-night-background"></div>
         <div id="day-background" class="day-night-background"></div>
@@ -186,57 +191,68 @@
         <div id="evening-night-background" class="day-night-background"></div>
         <div id="time-line"></div>
     </div>
-    <!-- Include Luxon Library for Time Zone Handling -->
     <script src="luxon.min.js"></script>
+    <script src="tz.js"></script>
     <script>
+        // JavaScript Code
         const DateTime = luxon.DateTime;
 
         // Global variable to store the interval ID
         let currentTimeIntervalId;
 
+        // Function to fetch user's IP-based location
         async function fetchLocation() {
-            const response = await fetch('https://ipapi.co/json/');
-            return response.json();
+            try {
+                const response = await fetch('https://ipapi.co/json/');
+                return response.json();
+            } catch (error) {
+                throw new Error('Unable to fetch IP-based location.');
+            }
         }
 
+        // Function to fetch sunrise and sunset times
         async function fetchSunTimes(lat, lon, date) {
-            const response = await fetch(`https://api.sunrise-sunset.org/json?lat=${lat}&lng=${lon}&formatted=0${date ? `&date=${date}` : ''}`);
-            return response.json();
+            try {
+                const response = await fetch(`https://api.sunrise-sunset.org/json?lat=${lat}&lng=${lon}&formatted=0${date ? `&date=${date}` : ''}`);
+                return response.json();
+            } catch (error) {
+                throw new Error('Unable to fetch sun times.');
+            }
         }
 
+        // Function to format DateTime objects
         function formatTime(dateTime) {
             return dateTime ? dateTime.toFormat('HH:mm:ss') : 'N/A';
         }
 
+        // Function to check if DateTime object is valid
         function isValidDateTime(dt) {
             return dt && dt.isValid;
         }
 
+        // Function to fetch coordinates and time zone from Nominatim
         async function fetchCoordinates(locationString) {
-            const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationString)}&format=json&limit=1`);
-            const data = await response.json();
-            if (data && data.length > 0) {
-                const { lat, lon, display_name } = data[0];
-                return {
-                    latitude: parseFloat(lat),
-                    longitude: parseFloat(lon),
-                    display_name
-                };
-            } else {
-                throw new Error('Location not found');
-            }
+
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationString)}&format=json&limit=1`);
+                const data = await response.json();
+                if (data && data.length > 0) {
+                    const { lat, lon, display_name } = data[0];
+                    const latitude = parseFloat(lat);
+                    const longitude = parseFloat(lon);
+                    const timeZone = tzlookup(latitude, longitude); // Use tz-lookup to get the time zone
+                    return {
+                        latitude,
+                        longitude,
+                        display_name,
+                        timeZone
+                    };
+                } else {
+                    throw new Error('Location not found.');
+                }
+
         }
 
-        async function fetchTimeZone(lat, lon) {
-            const response = await fetch(`https://timeapi.io/api/TimeZone/coordinate?latitude=${lat}&longitude=${lon}`);
-            const data = await response.json();
-            if (data && data.timeZone) {
-                return data.timeZone;
-            } else {
-                throw new Error('Time zone not found');
-            }
-        }
-
+        // Initialize the timeline with sun times and time zone
         function initializeTimeLine(times, timeZone, dateString) {
             const timeLine = document.getElementById('time-line');
             timeLine.innerHTML = ''; // Clear previous markers and labels
@@ -246,25 +262,33 @@
             const eveningCivilTwilightBackground = document.getElementById('evening-civil-twilight-background');
             const morningNightBackground = document.getElementById('morning-night-background');
             const eveningNightBackground = document.getElementById('evening-night-background');
-            const hoursInDay = 24;
-            const totalMinutesInDay = 1440;
 
+            // Dynamically calculate total minutes in the day
             let todayMidnight;
             if (dateString) {
                 todayMidnight = DateTime.fromISO(dateString, { zone: timeZone }).startOf('day');
             } else {
                 todayMidnight = DateTime.now().setZone(timeZone).startOf('day');
-                dateString = todayMidnight.toISODate(); // Set dateString to today's date in ISO format
+                dateString = todayMidnight.toISODate();
             }
+            const tomorrowMidnight = todayMidnight.plus({ days: 1 }).startOf('day');
+            const totalMinutesInDay = tomorrowMidnight.diff(todayMidnight, 'minutes').minutes;
 
             const nowInLocation = DateTime.now().setZone(timeZone);
-
             const isToday = dateString === nowInLocation.toISODate();
 
-            const sunriseTime = DateTime.fromISO(times.sunrise, { zone: 'utc' }).setZone(timeZone);
-            const sunsetTime = DateTime.fromISO(times.sunset, { zone: 'utc' }).setZone(timeZone);
-            const civilTwilightBeginTime = DateTime.fromISO(times.civil_twilight_begin, { zone: 'utc' }).setZone(timeZone);
-            const civilTwilightEndTime = DateTime.fromISO(times.civil_twilight_end, { zone: 'utc' }).setZone(timeZone);
+            // Parse sun times
+            const parseSunTime = (timeStr) => {
+                if (timeStr.includes('never') || timeStr === 'NaN') {
+                    return null;
+                }
+                return DateTime.fromISO(timeStr, { zone: 'utc' }).setZone(timeZone);
+            };
+
+            const sunriseTime = parseSunTime(times.sunrise);
+            const sunsetTime = parseSunTime(times.sunset);
+            const civilTwilightBeginTime = parseSunTime(times.civil_twilight_begin);
+            const civilTwilightEndTime = parseSunTime(times.civil_twilight_end);
 
             // Check if the times are valid
             const validSunrise = isValidDateTime(sunriseTime);
@@ -274,62 +298,86 @@
 
             // Display block times
             const blockTimes = `
-                <div>Morning Night: ${formatTime(todayMidnight)} - ${formatTime(civilTwilightBeginTime)}</div>
-                <div>Morning Civil Twilight: ${formatTime(civilTwilightBeginTime)} - ${formatTime(sunriseTime)}</div>
-                <div>Day: ${formatTime(sunriseTime)} - ${formatTime(sunsetTime)}</div>
-                <div>Evening Civil Twilight: ${formatTime(sunsetTime)} - ${formatTime(civilTwilightEndTime)}</div>
-                <div>Evening Night: ${formatTime(civilTwilightEndTime)} - ${formatTime(todayMidnight.plus({ days: 1 }))}</div>
+                <div>Morning Night: ${formatTime(todayMidnight)} - ${formatTime(validCivilTwilightBegin ? civilTwilightBeginTime : sunriseTime)}</div>
+                <div>Morning Civil Twilight: ${formatTime(validCivilTwilightBegin ? civilTwilightBeginTime : todayMidnight)} - ${formatTime(validSunrise ? sunriseTime : todayMidnight)}</div>
+                <div>Day: ${formatTime(validSunrise ? sunriseTime : todayMidnight)} - ${formatTime(validSunset ? sunsetTime : tomorrowMidnight)}</div>
+                <div>Evening Civil Twilight: ${formatTime(validSunset ? sunsetTime : todayMidnight)} - ${formatTime(validCivilTwilightEnd ? civilTwilightEndTime : todayMidnight)}</div>
+                <div>Evening Night: ${formatTime(validCivilTwilightEnd ? civilTwilightEndTime : sunsetTime)} - ${formatTime(tomorrowMidnight)}</div>
             `;
             document.getElementById('sun-times').innerHTML = blockTimes;
 
-            // Now, calculate positions and sizes in percentages
+            // Calculate positions and sizes in percentages
             function getPercentage(dateTime) {
                 if (!isValidDateTime(dateTime)) return null;
                 let minutesSinceMidnight = dateTime.diff(todayMidnight, 'minutes').minutes;
-                if (minutesSinceMidnight < 0) {
-                    minutesSinceMidnight += totalMinutesInDay;
-                }
                 return (minutesSinceMidnight / totalMinutesInDay) * 100;
+            }
+
+            // Function to handle wrap-around percentages
+            function calculateSegment(startPercent, endPercent) {
+                if (startPercent === null || endPercent === null) {
+                    return { startPercent: 0, sizePercent: 0 };
+                }
+                let sizePercent = endPercent - startPercent;
+                if (sizePercent < 0) {
+                    sizePercent += 100;
+                }
+                return { startPercent, sizePercent };
             }
 
             // Calculate start and end percentages for each segment
             const segments = [
+                // Morning Night
                 {
                     element: morningNightBackground,
-                    startPercent: 0,
-                    endPercent: validCivilTwilightBegin ? getPercentage(civilTwilightBeginTime) : 0
+                    ...calculateSegment(
+                        0,
+                        validCivilTwilightBegin ? getPercentage(civilTwilightBeginTime) : (validSunrise ? getPercentage(sunriseTime) : 100)
+                    )
                 },
+                // Morning Civil Twilight
                 {
                     element: morningCivilTwilightBackground,
-                    startPercent: validCivilTwilightBegin ? getPercentage(civilTwilightBeginTime) : 0,
-                    endPercent: validSunrise ? getPercentage(sunriseTime) : 0
+                    ...calculateSegment(
+                        validCivilTwilightBegin ? getPercentage(civilTwilightBeginTime) : 0,
+                        validSunrise ? getPercentage(sunriseTime) : 0
+                    )
                 },
+                // Day
                 {
                     element: dayBackground,
-                    startPercent: validSunrise ? getPercentage(sunriseTime) : 0,
-                    endPercent: validSunset ? getPercentage(sunsetTime) : 0
+                    ...calculateSegment(
+                        validSunrise ? getPercentage(sunriseTime) : 0,
+                        validSunset ? getPercentage(sunsetTime) : 100
+                    )
                 },
+                // Evening Civil Twilight
                 {
                     element: eveningCivilTwilightBackground,
-                    startPercent: validSunset ? getPercentage(sunsetTime) : 0,
-                    endPercent: validCivilTwilightEnd ? getPercentage(civilTwilightEndTime) : 100
+                    ...calculateSegment(
+                        validSunset ? getPercentage(sunsetTime) : 0,
+                        validCivilTwilightEnd ? getPercentage(civilTwilightEndTime) : 0
+                    )
                 },
+                // Evening Night
                 {
                     element: eveningNightBackground,
-                    startPercent: validCivilTwilightEnd ? getPercentage(civilTwilightEndTime) : 100,
-                    endPercent: 100
+                    ...calculateSegment(
+                        validCivilTwilightEnd ? getPercentage(civilTwilightEndTime) : (validSunset ? getPercentage(sunsetTime) : 0),
+                        100
+                    )
                 }
             ];
 
             // Apply calculated percentages to CSS custom properties
             segments.forEach(segment => {
-                const { element, startPercent, endPercent } = segment;
-                const sizePercent = ((endPercent - startPercent + 100) % 100);
+                const { element, startPercent, sizePercent } = segment;
                 element.style.setProperty('--start-percent', `${startPercent}%`);
                 element.style.setProperty('--size-percent', `${sizePercent}%`);
             });
 
             // Create hour markers and labels
+            const hoursInDay = totalMinutesInDay / 60;
             for (let i = 0; i <= hoursInDay; i++) {
                 const hourMarker = document.createElement('div');
                 hourMarker.className = 'hour-marker';
@@ -340,7 +388,7 @@
                 const hourLabel = document.createElement('div');
                 hourLabel.className = 'hour-label';
                 hourLabel.style.setProperty('--position-percent', `${positionPercent}%`);
-                hourLabel.textContent = `${i % 24}:00`;
+                hourLabel.textContent = `${(i % 24)}:00`;
                 timeLine.appendChild(hourLabel);
             }
 
@@ -359,9 +407,6 @@
                 if (isToday) {
                     const now = DateTime.now().setZone(timeZone);
                     let totalMinutes = now.diff(todayMidnight, 'minutes').minutes;
-                    if (totalMinutes < 0) {
-                        totalMinutes += totalMinutesInDay;
-                    }
                     const percentageOfDay = (totalMinutes / totalMinutesInDay) * 100;
                     currentTimeMarker.style.setProperty('--current-time-percent', `${percentageOfDay}%`);
                     currentTimeMarker.style.display = 'block';
@@ -381,8 +426,12 @@
             currentTimeIntervalId = setInterval(updateCurrentTimeMarker, 1000);
         }
 
+        // Main function to initialize the application
         async function initializeApp(locationString, dateString) {
             try {
+                // Clear previous error messages
+                document.getElementById('error-message').textContent = '';
+
                 let locationData;
                 if (locationString) {
                     // Use user-provided location
@@ -393,18 +442,17 @@
                     locationData = {
                         latitude: parseFloat(location.latitude),
                         longitude: parseFloat(location.longitude),
-                        display_name: `${location.city}, ${location.region}, ${location.country_name}`
+                        display_name: `${location.city}, ${location.region}, ${location.country_name}`,
+                        timeZone: location.timezone
                     };
                     // Pre-populate location input
-                    document.getElementById('location-input').value = `${location.city}, ${location.region}, ${location.country_name}`;
+                    document.getElementById('location-input').value = `${location.city}, ${location.country_name}`;
                 }
 
                 const latitude = locationData.latitude;
                 const longitude = locationData.longitude;
                 const display_name = locationData.display_name;
-
-                // Fetch time zone information
-                const timeZone = await fetchTimeZone(latitude, longitude);
+                const timeZone = tzlookup(latitude, longitude);
 
                 // Display location and time zone
                 document.getElementById('location').textContent = `Location: ${display_name}`;
@@ -418,16 +466,21 @@
                 }
 
                 const sunTimesData = await fetchSunTimes(latitude, longitude, dateString);
+                if (sunTimesData.status !== 'OK') {
+                    throw new Error('Unable to fetch sun times.');
+                }
                 const times = sunTimesData.results;
 
                 // Initialize timeline with time zone
                 initializeTimeLine(times, timeZone, dateString);
 
             } catch (error) {
-                alert(error.message);
+                // Display error message in the UI
+                document.getElementById('error-message').textContent = error.message;
             }
         }
 
+        // Event listener for DOMContentLoaded
         document.addEventListener('DOMContentLoaded', async () => {
             await initializeApp();
 
@@ -435,7 +488,12 @@
                 const locationInput = document.getElementById('location-input').value.trim();
                 const dateInput = document.getElementById('date-input').value;
 
-                await initializeApp(locationInput || null, dateInput || null);
+                if (!locationInput) {
+                    document.getElementById('error-message').textContent = 'Please enter a location.';
+                    return;
+                }
+
+                await initializeApp(locationInput, dateInput || null);
             });
         });
     </script>
