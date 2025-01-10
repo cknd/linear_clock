@@ -77,15 +77,17 @@
     }
     @media (max-width: 900px) {
       .add-bar-button-container {
-        margin: 20px;
+        margin-left: 30px;
+        margin-right: 5px;
+        margin-top: 75px;
         align-self: flex-start;
       }
     }
 
     #add-bar-button {
       font-size: 1.2rem;
-      width: 40px;
-      height: 40px;
+      width: 50px;
+      height: 50px;
       border-radius: 50%;
       cursor: pointer;
     }
@@ -144,8 +146,8 @@
     }
     @media (max-width: 900px) {
       .location-input {
-        width: 70%;
-        margin-right: 20px;
+        width: 65%;
+        margin-right: 30px;
       }
     }
 
@@ -158,6 +160,7 @@
     @media (max-width: 900px) {
       .info {
         max-width: 250px;
+        height: 170px;
       }
     }
 
@@ -318,6 +321,7 @@
     #bottom-date-override {
       margin: 50px;
       text-align: center;
+      color: #f0f0f0;
     }
     #bottom-date-override label {
       margin-right: 5px;
@@ -638,7 +642,7 @@
         buildTimeLine(barId);
 
       } catch (err) {
-        document.getElementById('error-message').textContent = err.message;
+        document.getElementById('error-message').textContent = "Something very unexpected happened: " + err.message;
       }
     }
 
