@@ -339,8 +339,6 @@
 </head>
 <body>
 
-  <!-- We can remove #top-controls if we have nothing else up top.
-       Or keep it if there's other UI. Up to you. -->
   <div id="top-controls"></div>
 
   <div id="error-message"></div>
@@ -352,7 +350,6 @@
     <input type="date" id="date-override-input" value="">
   </div>
 
-  <!-- The bubble panel for entering a location prior to adding a new bar -->
   <div id="new-bar-bubble">
     <input
       type="text"
@@ -380,6 +377,8 @@
     const newBarBubbleSubmitBtn = document.getElementById('new-bar-bubble-submit');
     const newBarBubbleCancelBtn = document.getElementById('new-bar-bubble-cancel');
     const dateOverrideInput = document.getElementById('date-override-input');
+    const errorMessage = document.getElementById('error-message');
+    const barsContainer = document.getElementById('bars-container');
 
     function getLocationsFromURL() {
       const urlParams = new URLSearchParams(window.location.search);
@@ -493,28 +492,35 @@
       addNewBar(loc);
     }
 
+
     async function renderAllBars() {
-      const container = document.getElementById('bars-container');
-      container.innerHTML = '';
+      // 1) Clear any running intervals (so we don’t have leftover updaters).
+      currentTimeIntervals.forEach(intervalId => {
+        if (intervalId) clearInterval(intervalId);
+      });
       currentTimeIntervals = [];
 
+      // 2) Clear the container DOM
+      barsContainer.innerHTML = '';
+
+      // 3) Rebuild the bars
       for (let i = 0; i < barsData.length; i++) {
         const barDOM = createTimeBarDOM(i);
-        container.appendChild(barDOM);
+        barsContainer.appendChild(barDOM);
       }
 
-      // Here we check how many bars exist.
-      // If exactly 1, we add the .single-bar-only class for mobile.
-      // If more than 1, remove it.
+      // 4) If exactly 1 bar, center it in mobile mode
       if (barsData.length === 1) {
-        container.classList.add('single-bar-only');
+        barsContainer.classList.add('single-bar-only');
       } else {
-        container.classList.remove('single-bar-only');
+        barsContainer.classList.remove('single-bar-only');
       }
 
+      // 5) Add the + button at the end
       const addButtonItem = createAddBarButtonDOM();
-      container.appendChild(addButtonItem);
+      barsContainer.appendChild(addButtonItem);
 
+      // 6) Initialize each bar (and create intervals anew)
       for (let i = 0; i < barsData.length; i++) {
         await initializeBar(i);
       }
@@ -617,12 +623,11 @@
     async function initializeBar(barId) {
       const barData = barsData[barId];
       if (!barData.location) {
-        document.getElementById('error-message').textContent =
-          `Please enter a location for bar #${barId+1}.`;
+        errorMessage.textContent = `Please enter a location for bar #${barId+1}.`;
         return;
       }
       try {
-        document.getElementById('error-message').textContent = '';
+        errorMessage.textContent = '';
 
         // fetch lat/lon/timeZone
         const coords = await fetchCoordinates(barData.location);
@@ -634,7 +639,6 @@
         // Determine which date to use:
         let dateForThisBar = overrideDate;
         if (!dateForThisBar) {
-          // no override => local "today" in this bar's time zone
           const localToday = DateTime.now().setZone(barData.timeZone).toISODate();
           dateForThisBar = localToday;
         }
@@ -647,11 +651,10 @@
         barData.sunTimes = sunTimesData.results;
         barData.selectedDate = dateForThisBar;
 
-        // Build timeline
         buildTimeLine(barId);
 
       } catch (err) {
-        document.getElementById('error-message').textContent = "Something very unexpected happened: " + err.message;
+        errorMessage.textContent = "Something very unexpected happened: " + err.message;
       }
     }
 
@@ -670,7 +673,7 @@
       const eveningNightBg = document.getElementById(`evening-night-${barId}`);
 
       const timeZone = barData.timeZone;
-      const selectedDate = barData.selectedDate; // the date we used for sunrise/sunset
+      const selectedDate = barData.selectedDate;
 
       const dateStart = DateTime.fromISO(selectedDate, { zone: timeZone }).startOf('day');
       const dateEnd   = dateStart.plus({ days: 1 });
@@ -698,15 +701,14 @@
       const civBegin    = parseSunTime(times.civil_twilight_begin);
       const civEnd      = parseSunTime(times.civil_twilight_end);
 
-      function isValidDateTime(dt) {
+      function valid(dt) {
         return dt && dt.isValid;
       }
-      const validSunrise = isValidDateTime(sunriseTime);
-      const validSunset  = isValidDateTime(sunsetTime);
-      const validCivBeg  = isValidDateTime(civBegin);
-      const validCivEnd  = isValidDateTime(civEnd);
+      const validSunrise = valid(sunriseTime);
+      const validSunset  = valid(sunsetTime);
+      const validCivBeg  = valid(civBegin);
+      const validCivEnd  = valid(civEnd);
 
-      // Info text
       const infoHTML = `
         <div>Location: ${barData.displayName || barData.location}</div>
         <div>Time Zone: ${timeZone}</div>
@@ -723,7 +725,7 @@
 
       // Segment helpers
       function getPercentage(dt) {
-        if (!isValidDateTime(dt)) return null;
+        if (!valid(dt)) return null;
         const minsSinceMidnight = dt.diff(dateStart, 'minutes').minutes;
         return (minsSinceMidnight / totalMinutesInDay) * 100;
       }
@@ -732,9 +734,7 @@
           return { startPercent: 0, sizePercent: 0 };
         }
         let sizePercent = endPercent - startPercent;
-        if (sizePercent < 0) {
-          sizePercent += 100;
-        }
+        if (sizePercent < 0) sizePercent += 100;
         return { startPercent, sizePercent };
       }
 
@@ -792,6 +792,7 @@
       currentTimeMarker.id = `current-time-marker-${barId}`;
       timeLine.appendChild(currentTimeMarker);
 
+      // If we had an older interval for this index, clear it
       if (currentTimeIntervals[barId]) {
         clearInterval(currentTimeIntervals[barId]);
       }
@@ -806,7 +807,8 @@
 
           const currentTimeDisplay = document.getElementById(`current-time-display-${barId}`);
           if (currentTimeDisplay) {
-            currentTimeDisplay.textContent = `Current Time: ${now.toFormat('cccc, LLL d, yyyy HH:mm:ss')}`;
+            currentTimeDisplay.textContent =
+              `Current Time: ${now.toFormat('cccc, LLL d, yyyy HH:mm:ss')}`;
           }
         } else {
           currentTimeMarker.style.display = 'none';
