@@ -200,6 +200,22 @@
         // Global variable to store the interval ID
         let currentTimeIntervalId;
 
+        // --- Helper to update URL parameter "location" ---
+        function updateURLParam(param, value) {
+            const searchParams = new URLSearchParams(window.location.search);
+
+            if (!value) {
+                // If there's no value, remove the param entirely
+                searchParams.delete(param);
+            } else {
+                searchParams.set(param, value);
+            }
+
+            // Build the new URL and update using history.replaceState (so we don't reload the page)
+            const newUrl = window.location.pathname + '?' + searchParams.toString();
+            window.history.replaceState({}, '', newUrl);
+        }
+
         // Function to fetch user's IP-based location
         async function fetchLocation() {
             try {
@@ -232,24 +248,22 @@
 
         // Function to fetch coordinates and time zone from Nominatim
         async function fetchCoordinates(locationString) {
-
-                const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationString)}&format=json&limit=1`);
-                const data = await response.json();
-                if (data && data.length > 0) {
-                    const { lat, lon, display_name } = data[0];
-                    const latitude = parseFloat(lat);
-                    const longitude = parseFloat(lon);
-                    const timeZone = tzlookup(latitude, longitude); // Use tz-lookup to get the time zone
-                    return {
-                        latitude,
-                        longitude,
-                        display_name,
-                        timeZone
-                    };
-                } else {
-                    throw new Error('Location not found.');
-                }
-
+            const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationString)}&format=json&limit=1`);
+            const data = await response.json();
+            if (data && data.length > 0) {
+                const { lat, lon, display_name } = data[0];
+                const latitude = parseFloat(lat);
+                const longitude = parseFloat(lon);
+                const timeZone = tzlookup(latitude, longitude); // Use tz-lookup to get the time zone
+                return {
+                    latitude,
+                    longitude,
+                    display_name,
+                    timeZone
+                };
+            } else {
+                throw new Error('Location not found.');
+            }
         }
 
         // Initialize the timeline with sun times and time zone
@@ -279,7 +293,7 @@
 
             // Parse sun times
             const parseSunTime = (timeStr) => {
-                if (timeStr.includes('never') || timeStr === 'NaN') {
+                if (!timeStr || timeStr.includes('never') || timeStr === 'NaN') {
                     return null;
                 }
                 return DateTime.fromISO(timeStr, { zone: 'utc' }).setZone(timeZone);
@@ -434,7 +448,7 @@
 
                 let locationData;
                 if (locationString) {
-                    // Use user-provided location
+                    // Use user-provided location from either URL or input
                     locationData = await fetchCoordinates(locationString);
                 } else {
                     // Use IP-based location
@@ -482,8 +496,20 @@
 
         // Event listener for DOMContentLoaded
         document.addEventListener('DOMContentLoaded', async () => {
-            await initializeApp();
+            // Check if there's a ?location=... in the URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const locationParam = urlParams.get('location');
 
+            // If we have a location param, set it in the input field
+            if (locationParam) {
+                document.getElementById('location-input').value = locationParam;
+            }
+
+            // Initialize the app. If there's a location param, use it.
+            // Otherwise, we'll try IP-based location.
+            await initializeApp(locationParam || null);
+
+            // Handle the "Update" button
             document.getElementById('update-button').addEventListener('click', async () => {
                 const locationInput = document.getElementById('location-input').value.trim();
                 const dateInput = document.getElementById('date-input').value;
@@ -493,6 +519,10 @@
                     return;
                 }
 
+                // Update the URL with the new location
+                updateURLParam('location', locationInput);
+
+                // Re-initialize the app with the new location/date
                 await initializeApp(locationInput, dateInput || null);
             });
         });
