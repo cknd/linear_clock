@@ -16,9 +16,6 @@
       align-items: center; /* Center the top UI horizontally */
     }
 
-    /* We removed the date picker from the top controls.
-       The top controls might hold other elements,
-       but we can remove it entirely if not used. */
     #top-controls {
       margin: 20px;
       display: flex;
@@ -64,6 +61,12 @@
         width: 100%;
         max-width: none;
         margin: 10px;
+        /* Default multiple bars: left-align them */
+        justify-content: flex-start;
+      }
+      /* If there's exactly one bar, center it horizontally in mobile mode */
+      #bars-container.single-bar-only {
+        justify-content: center;
       }
     }
 
@@ -90,11 +93,11 @@
     /* Each time-bar container */
     .time-bar {
       background: #fff;
-      margin: 10px auto;    /* top/bottom margin on desktop */
-      padding: 10px 40px;   /* horizontal padding so timeline doesn’t butt up to the edge */
+      margin: 10px auto;
+      padding: 10px 40px;
       border: 1px solid #ccc;
       border-radius: 6px;
-      position: relative;   /* for the close “X” in corner */
+      position: relative;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -139,7 +142,6 @@
       width: 30%;
       margin-right: 10px;
     }
-
     @media (max-width: 900px) {
       .location-input {
         width: 70%;
@@ -311,7 +313,7 @@
 
     /*
        The new date override area at bottom
-       label: "Select Different Date"
+       label: "change date:"
     */
     #bottom-date-override {
       margin: 50px;
@@ -326,16 +328,12 @@
 
   <!-- We can remove #top-controls if we have nothing else up top.
        Or keep it if there's other UI. Up to you. -->
-  <div id="top-controls">
-    <!-- Could hold other items if you want -->
-  </div>
+  <div id="top-controls"></div>
 
   <div id="error-message"></div>
 
   <div id="bars-container"></div>
 
-  <!-- A new bottom area for the date override.
-       The input starts empty. -->
   <div id="bottom-date-override">
     <label for="date-override-input">change date:</label>
     <input type="date" id="date-override-input" value="">
@@ -359,22 +357,15 @@
         Global variables & utility functions
     */
     const DateTime = luxon.DateTime;
-    let barsData = [];             // location data for each bar
-    let currentTimeIntervals = []; // intervals for each bar's ticker
+    let barsData = [];
+    let currentTimeIntervals = [];
     let ipBasedLocationString = '';
-    //
-    // We do NOT have a "currentDateISO" that is mandatory.
-    // Instead, we have an *optional* override date.
-    // If overrideDate is empty, each bar uses its local "today."
-    //
-    let overrideDate = ''; // empty string means "no override"
+    let overrideDate = ''; // empty => local "today" per bar
 
-    // For the bubble
     const newBarBubble = document.getElementById('new-bar-bubble');
     const newBarBubbleLocationInput = document.getElementById('new-bar-bubble-location-input');
     const newBarBubbleSubmitBtn = document.getElementById('new-bar-bubble-submit');
     const newBarBubbleCancelBtn = document.getElementById('new-bar-bubble-cancel');
-
     const dateOverrideInput = document.getElementById('date-override-input');
 
     function getLocationsFromURL() {
@@ -427,7 +418,6 @@
     function formatTime(dt) {
       return dt ? dt.toFormat('HH:mm:ss') : 'N/A';
     }
-
     function isValidDateTime(dt) {
       return dt && dt.isValid;
     }
@@ -448,26 +438,21 @@
       updateURLWithLocations();
     }
 
-    // “Light bubble” near the plus button
     function showNewBarBubble(addButtonRect) {
       newBarBubble.style.display = 'block';
       const bubbleWidth  = newBarBubble.offsetWidth;
-      const bubbleHeight = newBarBubble.offsetHeight;
       const offsetY = 10;
 
       if (window.innerWidth <= 900) {
-        // MOBILE: anchor to bottom-right, bubble extends left
         const bubbleLeft = (addButtonRect.right + window.scrollX) - bubbleWidth;
         const bubbleTop  = (addButtonRect.bottom + window.scrollY + offsetY);
 
         newBarBubble.style.left = bubbleLeft + 'px';
         newBarBubble.style.top  = bubbleTop + 'px';
 
-        const arrowLeft = bubbleWidth - 20;
+        const arrowLeft = bubbleWidth - 28;
         newBarBubble.style.setProperty('--arrow-left', arrowLeft + 'px');
-
       } else {
-        // DESKTOP: horizontally center around the plus button
         const plusCenterX = addButtonRect.left + (addButtonRect.width / 2);
         const desiredLeft = (plusCenterX - (bubbleWidth / 2)) + window.scrollX;
         newBarBubble.style.left = desiredLeft + 'px';
@@ -505,11 +490,18 @@
         container.appendChild(barDOM);
       }
 
-      // Add the plus-button item at the end
+      // Here we check how many bars exist.
+      // If exactly 1, we add the .single-bar-only class for mobile.
+      // If more than 1, remove it.
+      if (barsData.length === 1) {
+        container.classList.add('single-bar-only');
+      } else {
+        container.classList.remove('single-bar-only');
+      }
+
       const addButtonItem = createAddBarButtonDOM();
       container.appendChild(addButtonItem);
 
-      // Initialize each bar
       for (let i = 0; i < barsData.length; i++) {
         await initializeBar(i);
       }
@@ -609,10 +601,6 @@
       return barContainer;
     }
 
-    /**
-     * For each bar, if overrideDate is empty, use "today" in that bar’s time zone.
-     * If overrideDate is set, use that date for the sunrise/sunset fetch.
-     */
     async function initializeBar(barId) {
       const barData = barsData[barId];
       if (!barData.location) {
@@ -676,16 +664,11 @@
       const totalMinutesInDay = dateEnd.diff(dateStart, 'minutes').minutes;
 
       // Check local current time if the bar's "today" matches the override date
-      // If overrideDate is empty, we used local "today," so they match automatically.
-      // If overrideDate is set, we see if the bar's local "right now" is on that override date.
-      // If not, we won't show the current-time marker.
       let isTodayForThisBar = false;
       const nowLocal = DateTime.now().setZone(timeZone);
       if (!overrideDate) {
-        // no override => definitely "today"
         isTodayForThisBar = true;
       } else {
-        // override => check if nowLocal.toISODate() equals overrideDate
         if (nowLocal.toISODate() === overrideDate) {
           isTodayForThisBar = true;
         }
@@ -833,10 +816,8 @@
         console.warn('Could not fetch IP-based location:', err);
       }
 
-      // read any ?location= from the URL
       const locations = getLocationsFromURL();
       if (locations.length === 0) {
-        // no location => add a bar from IP-based
         addNewBar(ipBasedLocationString);
       } else {
         for (let loc of locations) {
@@ -844,14 +825,9 @@
         }
       }
 
-      // The date override input starts empty => overrideDate = ''
       dateOverrideInput.value = '';
-
-      // If user picks a date, store it in overrideDate
-      // and re-initialize all bars
       dateOverrideInput.addEventListener('change', async (e) => {
-        overrideDate = e.target.value.trim(); // if empty => go back to local
-        // re-initialize all bars
+        overrideDate = e.target.value.trim();
         for (let i = 0; i < barsData.length; i++) {
           await initializeBar(i);
         }
@@ -866,7 +842,6 @@
         }
       });
 
-      // Pressing ESC closes the bubble
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
           hideNewBarBubble();
